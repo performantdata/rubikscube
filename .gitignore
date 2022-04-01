@@ -1,0 +1,9 @@
+# IntelliJ
+/.bsp/
+/.idea/
+
+# sbt
+/project/target/
+/target/
+
+/rubiks-example.txt
