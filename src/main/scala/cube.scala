@@ -1,7 +1,6 @@
-import Cube.colorMapByCorners
-
 case class Row(_1: Char, _2: Char, _3: Char) {
   override def toString: String = s"${_1} ${_2} ${_3}"
+  def serialize: String = s"${_1}${_2}${_3}"
 
   def reverse: Row = Row(_3, _2, _1)
 
@@ -9,11 +8,15 @@ case class Row(_1: Char, _2: Char, _3: Char) {
 }
 
 case class Face(_1: Row, _2: Row, _3: Row) {
+  def center: Char = _2._2
+
   override def toString: String =
     s"""${_1}
        |${_2}
        |${_3}
        |""".stripMargin
+
+  def serialize: String = s"${_1.serialize}${_2.serialize}${_3.serialize}"
 
   def rotate180: Face = Face(_3.reverse, _2.reverse, _1.reverse)
   def rotateRight90: Face = Face(Row(_3._1, _2._1, _1._1), Row(_3._2, _2._2, _1._2), Row(_3._3, _2._3, _1._3))
@@ -35,6 +38,8 @@ case class Cube(U: Face, L: Face, F: Face, R: Face, B: Face, D: Face) {
        |      ${D._3}
        |""".stripMargin
 
+  def serialize: String = Seq(U, L, F, R, B, D).map(_.serialize).mkString
+
   def colorMap(m: Map[Char, Char]): Cube =
     Cube(U.colorMap(m), L.colorMap(m), F.colorMap(m), R.colorMap(m), B.colorMap(m), D.colorMap(m))
 
@@ -54,8 +59,9 @@ case class Cube(U: Face, L: Face, F: Face, R: Face, B: Face, D: Face) {
      *TODO This isn't canonical, though, since the colors in a standard cube can be swapped in 24 different ways
      * so that another corner would become the G-R-W one.
      */
-    standardizeCornerColors.standardizeFront.standardizeRotation
-   }
+//    standardizeCornerColors.grwToFront.grwToUpperLeft
+    CornersColoring.colorMapsByCorners(cornerColors).map(colorMap).map(_.rCenterToFront.orientStandard).min
+  }
 
   /** Standardize the colors in this cube.
     *
@@ -67,10 +73,10 @@ case class Cube(U: Face, L: Face, F: Face, R: Face, B: Face, D: Face) {
     *
     * @return An equivalent cube whose colors are standardized.
     */
-  private def standardizeCornerColors: Cube = colorMap(colorMapByCorners(cornerColors))
+  private def standardizeCornerColors: Cube = CornersColoring.colorMapsByCorners(cornerColors).map(colorMap).min
 
   /** Bring the GRW corner to the front, with the R facing front. */
-  private def standardizeFront: Cube = {
+  private def grwToFront: Cube = {
     if (Set((F._1._1, U._3._1), (F._1._3, R._1._1), (F._3._3, D._1._3), (F._3._1, L._3._3)).contains(('R','W')))
       this
     else if (Set((U._3._1, L._1._3), (U._3._3, F._1._3), (U._1._3, R._1._3), (U._1._1, B._1._3)).contains(('R','W')))
@@ -85,6 +91,15 @@ case class Cube(U: Face, L: Face, F: Face, R: Face, B: Face, D: Face) {
       rotateLeft.rotateLeft
   }
 
+  /** Bring the R center to the front. */
+  private def rCenterToFront: Cube =
+    if (F.center == 'R') this
+    else if (U.center == 'R') rotateDown
+    else if (D.center == 'R') rotateUp
+    else if (L.center == 'R') rotateRight
+    else if (R.center == 'R') rotateLeft
+    else rotateLeft.rotateLeft
+
   private def rotateDown = Cube(U = B.rotate180, L = L.rotateRight90, F = U, R = R.rotateLeft90, B = D.rotate180, D = F)
   private def rotateUp = Cube(U = F, L = L.rotateLeft90, F = D, R = R.rotateRight90, B = U.rotate180, D = B.rotate180)
   private def rotateRight = Cube(U = U.rotateLeft90, L = B, F = L, R = F, B = R, D = D.rotateRight90)
@@ -93,85 +108,35 @@ case class Cube(U: Face, L: Face, F: Face, R: Face, B: Face, D: Face) {
   /** Bring the GRW corner to the upper left.
     * Assumes that the R face of the corner is facing front.
     */
-  private def standardizeRotation: Cube = ('R','W') match {
+  private def grwToUpperLeft: Cube = ('R','W') match {
     case (F._1._1, U._3._1) => this
     case (F._1._3, R._1._1) => rotateRight90.rotateRight90.rotateRight90
     case (F._3._3, D._1._3) => rotateRight90.rotateRight90
     case _ => rotateRight90
   }
 
+  /** Orient the cube in the standard way.
+    * Assumes that the R face of the corner is facing front.
+    */
+  private def orientStandard: Cube =
+    if (U.center == 'W') this
+    else if (R.center == 'W') rotateRight90.rotateRight90.rotateRight90
+    else if (D.center == 'W') rotateRight90.rotateRight90
+    else                      rotateRight90
+
   private def rotateRight90: Cube =
     Cube(U = L.rotateRight90, L = D.rotateRight90, F = F.rotateRight90, R = U.rotateRight90, B = B.rotateLeft90, D = R.rotateRight90)
+
+  private def standardizeCenterColors: Cube = {
+    val m = Map(
+      U.center -> 'W',
+      L.center -> 'G', F.center -> 'R', R.center -> 'B', B.center -> 'O',
+      D.center -> 'Y'
+    )
+    colorMap(m)
+  }
 }
 
 object Cube {
-  /** Standard corners coloring of a Rubik's cube.
-    *
-    * @see https://upload.wikimedia.org/wikipedia/commons/9/9d/Rubik%27s_cube_colors.svg
-    */
-  private val standardCornerColors = CornersColoring(Seq(
-    CornerColors('G','R','W'), CornerColors('B','W','R'), CornerColors('B','R','Y'), CornerColors('G','Y','R'),
-    CornerColors('B','O','W'), CornerColors('O','B','Y'), CornerColors('O','G','W'), CornerColors('O','Y','G')
-  ))
-
-  /** Map from a valid corners coloring to the color map that standardizes it. */
-  private val colorMapByCorners: Map[CornersColoring, Map[Char,Char]] = {
-    val colors = Seq('Y','R','G','O','B','W')
-    val allColorMaps = colors.permutations.map(_.zip(colors).toMap)
-
-    allColorMaps.map(m => {
-      val reverseMap = m.map{ case (k,v) => (v,k) }
-      val remappedCorners = CornersColoring(standardCornerColors.corners.map(_.colorMap(reverseMap)))
-      remappedCorners -> m
-    }).toMap
-  }
-
-  val colorMapsByCorners: Map[CornersColoring, Seq[Map[Char,Char]]] = {
-    val colors = Seq('Y','R','G','O','B','W')
-    val allColorMaps = colors.permutations.map(_.zip(colors).toMap)
-
-    allColorMaps.map(m => {
-      val reverseMap = m.map{ case (k,v) => (v,k) }
-      val remappedCorners = CornersColoring(standardCornerColors.corners.map(_.colorMap(reverseMap)))
-      remappedCorners -> m
-    }).toSeq.groupMap(_._1)(_._2)
-  }
-}
-
-/** The colors of a corner, in counterclockwise order, permuted so that the least character comes first. */
-case class CornerColors private (_1: Char, _2: Char, _3: Char) {
-  def colorMap(m: Map[Char, Char]): CornerColors = CornerColors(m(_1), m(_2), m(_3))
-}
-
-object CornerColors {
-  implicit val ordering: Ordering[CornerColors] = Ordering[(Char,Char,Char)].on(x => (x._1, x._2, x._3))
-
-  def apply(_1: Char, _2: Char, _3: Char): CornerColors = {
-    assert(_1 != _2 && _1 != _3 && _2 != _3)
-
-    if (_1 < _2) {
-      if (_1 < _3) new CornerColors(_1, _2, _3)
-      else         new CornerColors(_3, _1, _2)
-    } else {  // _2 < _1
-      if (_2 < _3) new CornerColors(_2, _3, _1)
-      else         new CornerColors(_3, _1, _2)
-    }
-  }
-}
-
-case class CornersColoring private(
-  _1: CornerColors, _2: CornerColors, _3: CornerColors, _4: CornerColors,
-  _5: CornerColors, _6: CornerColors, _7: CornerColors, _8: CornerColors
-) {
-  def corners: Seq[CornerColors] = Seq(_1, _2, _3, _4, _5, _6, _7, _8)
-}
-
-//noinspection ZeroIndexToHead
-object CornersColoring {
-  def apply(corners: Seq[CornerColors]): CornersColoring = {
-    assert(corners.size == 8)
-
-    val cs = corners.sorted
-    new CornersColoring(cs(0), cs(1), cs(2), cs(3), cs(4), cs(5), cs(6), cs(7))
-  }
+  implicit val ordering: Ordering[Cube] = Ordering.by(_.serialize)
 }
