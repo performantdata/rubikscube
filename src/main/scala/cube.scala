@@ -50,45 +50,55 @@ case class Cube(U: Face, L: Face, F: Face, R: Face, B: Face, D: Face) {
     CornerColors(B._1._3, L._1._1, U._1._1), CornerColors(B._3._3, D._3._1, L._3._1)
   ))
 
-  /** Return a canonical representation of this cube. */
-  def canonicalize: Cube = {
-    /* A cube with [[https://upload.wikimedia.org/wikipedia/commons/9/9d/Rubik%27s_cube_colors.svg the standard coloring]]
-     * can be oriented in a canonical fashion by placing the G-R-W corner in the upper left corner with the R facing
-     * forward.
-     *
-     *TODO This isn't canonical, though, since the colors in a standard cube can be swapped in 24 different ways
-     * so that another corner would become the G-R-W one.
-     */
-//    standardizeCornerColors.grwToFront.grwToUpperLeft
-    CornersColoring.colorMapsByCorners(cornerColors).map(colorMap).map(_.rCenterToFront.orientStandard).min
-  }
+  /** Return a canonical representation of this cube.
+    *
+    * The canonical form is obtained by:
+    *   - Permuting the colors to become those of the
+    *     [[https://upload.wikimedia.org/wikipedia/commons/9/9d/Rubik%27s_cube_colors.svg the standard coloring]].
+    *     This results in a set of 24 possible cubes (with a standard color arrangement),
+    *     reflecting the 24 orientations of a cube.
+    *   - Rotating the resulting cubes into
+    *     [[https://upload.wikimedia.org/wikipedia/commons/9/9d/Rubik%27s_cube_colors.svg the standard orientation]]
+    *     (red in front, white on top, etc.).
+    *   - Choosing the resulting cube that sorts first,
+    *     based on a lexicographic sort on a serialization of the cube's color letters.
+    *
+    * The last step may seem arbitrary, and it is to a degree.
+    *
+    * If we consider an initial cube configuration, of a standard color arrangement and in the standard orientation,
+    * we can permute the colors in 6! = 720 ways and reorient the cube in 24 ways,
+    * for a total of 17,280 variations of the same cube problem.
+    * But that initial configuration isn't necessarily canonical:
+    * we could have rotated it in 24 ways and permuted its colors to bring it back into the standard orientation.
+    *
+    * So when we try to reverse the process, as this method does, we return to these 24 "initial" configurations,
+    * and we need to define some artificial way to designate a canonical form.
+    * Here we do it by totally ordering the set and arbitrarily choosing the smallest.
+    *
+    * To create a total order, we need to compare (almost) the whole states of the configurations,
+    * else we may end up with a partial order.
+    * (I say "almost" because some of the state is determined by the rest. But here we use all of it for simplicity.)
+    * In this implementation, we simply derive that state from the colors at each location on the cube,
+    * in a well-defined order.
+    */
+  def canonicalize: Cube = standardizeCornerColors.map(_.rCenterToFront.orientStandard).min
 
   /** Standardize the colors in this cube.
     *
     * There are 30 (= 5×3×2) possible arrangements of the six standard colors, ignoring rotation.
     * Only one of those 30 corresponds to
     * [[https://upload.wikimedia.org/wikipedia/commons/9/9d/Rubik%27s_cube_colors.svg the standard cube coloring]].
-    * The standard coloring is implicit in the colors of the corners.
+    * The color arrangement of a representation is implicit in the colors of the corners.
     * This method standardizes the coloring by standardizing that of the corners.
     *
-    * @return An equivalent cube whose colors are standardized.
+    * @return All equivalent cubes whose colors are standardized.
     */
-  private def standardizeCornerColors: Cube = CornersColoring.colorMapsByCorners(cornerColors).map(colorMap).min
-
-  /** Bring the GRW corner to the front, with the R facing front. */
-  private def grwToFront: Cube = {
-    if (Set((F._1._1, U._3._1), (F._1._3, R._1._1), (F._3._3, D._1._3), (F._3._1, L._3._3)).contains(('R','W')))
-      this
-    else if (Set((U._3._1, L._1._3), (U._3._3, F._1._3), (U._1._3, R._1._3), (U._1._1, B._1._3)).contains(('R','W')))
-      rotateDown
-    else if (Set((D._1._1, F._3._1), (D._1._3, R._3._1), (D._3._1, L._3._1), (D._3._3, B._3._1)).contains(('R','W')))
-      rotateUp
-    else if (Set((L._1._1, U._1._1), (L._1._3, F._1._1), (L._3._1, B._3._3), (L._3._3, D._1._1)).contains(('R','W')))
-      rotateRight
-    else if (Set((R._1._1, U._3._3), (R._1._3, B._1._1), (R._3._1, F._3._3), (R._3._3, D._3._3)).contains(('R','W')))
-      rotateLeft
-    else
-      rotateLeft.rotateLeft
+  private def standardizeCornerColors: Seq[Cube] = {
+    /* We standardize the color arrangement by applying the reverse of all permutations that could lead from the
+     * standard arrangement to the arrangement that this cube exhibits.
+     * We do this by looking up those reverse permutations from a map that we've precomputed.
+     */
+    CornersColoring.colorMapsByCorners(cornerColors).map(colorMap)
   }
 
   /** Bring the R center to the front. */
@@ -105,16 +115,6 @@ case class Cube(U: Face, L: Face, F: Face, R: Face, B: Face, D: Face) {
   private def rotateRight = Cube(U = U.rotateLeft90, L = B, F = L, R = F, B = R, D = D.rotateRight90)
   private def rotateLeft = Cube(U = U.rotateRight90, L = F, F = R, R = B, B = L, D = D.rotateLeft90)
 
-  /** Bring the GRW corner to the upper left.
-    * Assumes that the R face of the corner is facing front.
-    */
-  private def grwToUpperLeft: Cube = ('R','W') match {
-    case (F._1._1, U._3._1) => this
-    case (F._1._3, R._1._1) => rotateRight90.rotateRight90.rotateRight90
-    case (F._3._3, D._1._3) => rotateRight90.rotateRight90
-    case _ => rotateRight90
-  }
-
   /** Orient the cube in the standard way.
     * Assumes that the R face of the corner is facing front.
     */
@@ -126,17 +126,9 @@ case class Cube(U: Face, L: Face, F: Face, R: Face, B: Face, D: Face) {
 
   private def rotateRight90: Cube =
     Cube(U = L.rotateRight90, L = D.rotateRight90, F = F.rotateRight90, R = U.rotateRight90, B = B.rotateLeft90, D = R.rotateRight90)
-
-  private def standardizeCenterColors: Cube = {
-    val m = Map(
-      U.center -> 'W',
-      L.center -> 'G', F.center -> 'R', R.center -> 'B', B.center -> 'O',
-      D.center -> 'Y'
-    )
-    colorMap(m)
-  }
 }
 
 object Cube {
-  implicit val ordering: Ordering[Cube] = Ordering.by(_.serialize)
+  /** An ordering based on the lexicographic ordering of a serialization of the cube. */
+  private implicit val ordering: Ordering[Cube] = Ordering.by(_.serialize)
 }

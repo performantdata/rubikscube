@@ -44,18 +44,6 @@ object CornersColoring {
     CornerColors('B','O','W'), CornerColors('O','B','Y'), CornerColors('O','G','W'), CornerColors('O','Y','G')
   ))
 
-  /** Map from a valid corners coloring to the color map that standardizes it. */
-  val colorMapByCorners: Map[CornersColoring, Map[Char,Char]] = {
-    val colors = Seq('Y','R','G','O','B','W')
-    val allColorMaps = colors.permutations.map(_.zip(colors).toMap)
-
-    allColorMaps.map(m => {
-      val reverseMap = m.map{ case (k,v) => (v,k) }
-      val remappedCorners = CornersColoring(standardCornerColors.corners.map(_.colorMap(reverseMap)))
-      remappedCorners -> m
-    }).toMap
-  }
-
   /** Map from a valid corners coloring to the color maps that standardize it. */
   val colorMapsByCorners: Map[CornersColoring, Seq[Map[Char,Char]]] = {
     val colors = Seq('Y','R','G','O','B','W')
